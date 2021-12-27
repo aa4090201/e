@@ -2,7 +2,7 @@
 #include "WebServer.h"
 
 #include "DHT.h"  //引入函式庫
-#define DHT11PIN 27
+#define DHT11PIN 27 //溫溼度
 
 DHT dht(DHT11PIN, DHT11); 
 
@@ -10,16 +10,23 @@ DHT dht(DHT11PIN, DHT11);
 const char* ssid = "0";
 const char* password = "yohaneNO1";
 
-#define PIN_RED  13
-#define PIN_GREEN  12
-#define PIN_BLUE  14
-int L_RED;
-int L_GREEN;
-int L_BLUE;
-int rgbstate=1;
-int lightstate=1;
-int input =0 ;
-int input_map  =0;
+#define PIN_RED  13 //紅燈腳
+#define PIN_GREEN  12 //綠燈腳
+#define PIN_BLUE  14  //藍燈腳
+int L_RED;  //紅燈rgb值
+int L_GREEN;  //綠燈rgb值
+int L_BLUE; //藍燈rgb值
+int L_RED_map;  //紅燈用亮度轉換
+int L_GREEN_map;  //綠燈用亮度轉換
+int L_BLUE_map;   //藍燈用亮度轉換
+int ledstate=0;   //led是否開啟
+int rgbstate=1;   //led是否自動決定顏色
+int lightstate=1; //led是否自動決定亮度
+int input =0 ;    //光敏電阻輸入值
+int input_map  =0;  //轉換光敏電阻輸入值
+int triggerPin = 26; //用來trigger
+int echoPin = 25; //用來接收echo
+long duration, cm, inches;
 WebServer server(80);  // Object of WebServer(HTTP port, 80 is defult)
 
 void setup() {
@@ -46,15 +53,17 @@ void setup() {
   //server啟動
   server.begin();
   Serial.println("HTTP server started");
-  ledcSetup(0, 5000, 8);
-  ledcAttachPin(PIN_RED, 0);
+  ledcSetup(0, 5000, 8);  
+  ledcAttachPin(PIN_RED, 0);  //紅燈用頻道
    ledcSetup(1, 5000, 8);
   ledcAttachPin(PIN_GREEN, 1);
-   ledcSetup(2, 5000, 8);
-  ledcAttachPin(PIN_BLUE, 2);
+   ledcSetup(2, 5000, 8);     //綠燈用頻道
+  ledcAttachPin(PIN_BLUE, 2);  //藍燈用頻道
   dht.begin();
-   pinMode(33, INPUT);
-
+   pinMode(33, INPUT);  //光敏電阻
+   pinMode(32, INPUT);
+   pinMode(triggerPin, OUTPUT); //發送超音波
+   pinMode(echoPin, INPUT);  //讀取超音波
 
 }
 
@@ -69,29 +78,128 @@ void loop() {
   Serial.println(humi);
   Serial.println(input);
   Serial.println(input_map);
-    if((L_RED-input_map)>0){
-     ledcWrite(0, L_RED-input_map); }
-     else{ledcWrite(0, 0);}
-     if((L_GREEN-input_map)>0){
-    ledcWrite(1, L_GREEN-input_map); }
-     else{ledcWrite(1, 0);}
-    if((L_BLUE-input_map)>0){
-    ledcWrite(2, L_BLUE-input_map);   }
-     else{ledcWrite(2, 0);}
-  if(rgbstate == 1){
-  if(temp>26){
-    L_BLUE=255;
+   Serial.println(cm);
+  
+   
+   //發送超音波
+  digitalWrite(triggerPin, LOW);
+  delayMicroseconds(5);
+  digitalWrite(triggerPin, HIGH);  // 給 Trig 高電位，持續 10微秒
+  delayMicroseconds(10);
+  digitalWrite(triggerPin, LOW);
+  
+
+  //接收超音波
+  duration = pulseIn(echoPin, HIGH);   // 收到高電位時的時間
+
+  //將回傳時間換算成距離 cm 或 inch 
+  cm = (duration/2) / 29.1;   
+ 
+  if(cm <10 ){  //當距離小於10公分時開啟led
+    ledstate= 1;
+  }
+  if(ledstate== 0){ //關閉led
+    L_BLUE=0;
     L_RED=0;
-    L_GREEN=0;}
-    if(temp<26){
+    L_GREEN=0;
+    ledcWrite(0, L_RED);    
+    ledcWrite(1, L_GREEN);
+    ledcWrite(2, L_BLUE);
+  }
+  if(ledstate== 1){ //開啟led
+    L_RED_map = map(input_map, 0, 255, 0, L_RED);
+    ledcWrite(0, L_RED-L_RED_map); 
+    L_GREEN_map = map(input_map, 0, 255, 0, L_GREEN);
+    ledcWrite(1, L_GREEN-L_GREEN_map);
+    L_BLUE_map = map(input_map, 0, 255, 0, L_BLUE);
+    ledcWrite(2, L_BLUE-L_BLUE_map);
+  if(rgbstate == 1){  //開啟led自動跟隨溫度改變顏色
+  if(temp>26){  //大於26度led藍紅黃
+    if(lightstate == 1){ //led自動隨光敏電阻改變亮度
+    input = analogRead(33);
+    input_map = map(input, 0, 300, 0, 255);}
+    L_BLUE=255; 
+    L_RED=0;
+    L_GREEN=0;
+    L_RED_map = map(input_map, 0, 255, 0, L_RED);
+    ledcWrite(0, L_RED-L_RED_map); 
+    L_GREEN_map = map(input_map, 0, 255, 0, L_GREEN);
+    ledcWrite(1, L_GREEN-L_GREEN_map);
+    L_BLUE_map = map(input_map, 0, 255, 0, L_BLUE);
+    ledcWrite(2, L_BLUE-L_BLUE_map);
+    delay(1800);
+    if(lightstate == 1){ //led自動隨光敏電阻改變亮度
+    input = analogRead(33);
+    input_map = map(input, 0, 300, 0, 255);}
     L_RED=255;
     L_GREEN=0;
-    L_BLUE=0; }
-}
-
-   if(lightstate == 1){
+    L_BLUE=0;
+    L_RED_map = map(input_map, 0, 255, 0, L_RED);
+    ledcWrite(0, L_RED-L_RED_map); 
+    L_GREEN_map = map(input_map, 0, 255, 0, L_GREEN);
+    ledcWrite(1, L_GREEN-L_GREEN_map);
+    L_BLUE_map = map(input_map, 0, 255, 0, L_BLUE);
+    ledcWrite(2, L_BLUE-L_BLUE_map);
+    delay(1800);
+    if(lightstate == 1){ //led自動隨光敏電阻改變亮度
     input = analogRead(33);
-    input_map = map(input, 0, 250, 0, 255);
+    input_map = map(input, 0, 300, 0, 255);}
+    L_RED=255;
+    L_GREEN=255;
+    L_BLUE=0;
+    L_RED_map = map(input_map, 0, 255, 0, L_RED);
+    ledcWrite(0, L_RED-L_RED_map); 
+    L_GREEN_map = map(input_map, 0, 255, 0, L_GREEN);
+    ledcWrite(1, L_GREEN-L_GREEN_map);
+    L_BLUE_map = map(input_map, 0, 255, 0, L_BLUE);
+    ledcWrite(2, L_BLUE-L_BLUE_map);
+    delay(1800);}
+    if(temp<=26){  //小於26度led紫粉綠
+    if(lightstate == 1){ //led自動隨光敏電阻改變亮度
+    input = analogRead(33);
+    input_map = map(input, 0, 300, 0, 255);}
+    L_RED=138;
+    L_GREEN=43;
+    L_BLUE=226;
+    L_RED_map = map(input_map, 0, 255, 0, L_RED);
+    ledcWrite(0, L_RED-L_RED_map); 
+    L_GREEN_map = map(input_map, 0, 255, 0, L_GREEN);
+    ledcWrite(1, L_GREEN-L_GREEN_map);
+    L_BLUE_map = map(input_map, 0, 255, 0, L_BLUE);
+    ledcWrite(2, L_BLUE-L_BLUE_map);
+    delay(1800);
+    if(lightstate == 1){ //led自動隨光敏電阻改變亮度
+    input = analogRead(33);
+    input_map = map(input, 0, 300, 0, 255);}
+    L_RED=255;
+    L_GREEN=192;
+    L_BLUE=203;
+    L_RED_map = map(input_map, 0, 255, 0, L_RED);
+    ledcWrite(0, L_RED-L_RED_map); 
+    L_GREEN_map = map(input_map, 0, 255, 0, L_GREEN);
+    ledcWrite(1, L_GREEN-L_GREEN_map);
+    L_BLUE_map = map(input_map, 0, 255, 0, L_BLUE);
+    ledcWrite(2, L_BLUE-L_BLUE_map);
+    delay(1800);
+    if(lightstate == 1){ //led自動隨光敏電阻改變亮度
+    input = analogRead(33);
+    input_map = map(input, 0, 300, 0, 255);}
+    L_RED=0;
+    L_GREEN=255;
+    L_BLUE=0;
+    L_RED_map = map(input_map, 0, 255, 0, L_RED);
+    ledcWrite(0, L_RED-L_RED_map); 
+    L_GREEN_map = map(input_map, 0, 255, 0, L_GREEN);
+    ledcWrite(1, L_GREEN-L_GREEN_map);
+    L_BLUE_map = map(input_map, 0, 255, 0, L_BLUE);
+    ledcWrite(2, L_BLUE-L_BLUE_map);
+    delay(1800);}
+}
+}
+   if(lightstate == 1){ //led自動隨光敏電阻改變亮度
+    input = analogRead(33);
+    input_map = map(input, 0, 300, 0, 255);
+    
 
 }
 }
@@ -291,6 +399,7 @@ void createWebServer()
   });
   server.on("/led/on", []() {
     Serial.println("LED On");
+    ledstate =1;
     rgbstate =1;
     lightstate =1; //add your code here
     
@@ -312,10 +421,8 @@ void createWebServer()
   });
   server.on("/led/off", []() {
     Serial.println("LED Off");
-    rgbstate =0;
-      L_RED=0;
-      L_GREEN=0;
-      L_BLUE=0;//add your code here
+    ledstate =0;
+      //add your code here
     
     String response = "{\"LED Off Success\"}";
     server.send(200, "text/html", LEDCLOSEPage);
@@ -399,12 +506,8 @@ void createWebServer()
       Serial.println(lightBrightness);
       lightstate =0;
       input_map=255-lightBrightness;
-      if(L_RED>0){ledcWrite(0, L_RED-input_map);}
-      else{ledcWrite(0, 0);}
-      if(L_GREEN>0){ledcWrite(1, L_GREEN-input_map);}
-      else{ledcWrite(1, 0);}
-      if(L_BLUE>0){ledcWrite(2, L_BLUE-input_map);}
-      else{ledcWrite(2, 0);}
+
+ 
         
  //add your code here
       
@@ -416,4 +519,3 @@ void createWebServer()
       server.send(404, "application/json", response);
     }
   });
-}
